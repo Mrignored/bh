@@ -1,4 +1,4 @@
-Backhaul Premium without license
+Backhaul
 
 ## How to Run
 
