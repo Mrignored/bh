@@ -1854,14 +1854,25 @@ display_menu() {
  	echo -e " 5. Update & Install Backhaul Core"
  	echo -e " 6. Update & install script"
  	echo -e " 7. Remove Backhaul Core"
+    echo -e " 8. Cronjob Setting"
     echo -e " 0. Exit"
     echo
     echo "-------------------------------"
 }
 
+run_autorestart_manager() {
+    clear
+    echo -e "${YELLOW}Downloading & Launching Cronjob Setting from GitHub...${NC}"
+    echo
+    curl -sSL https://raw.githubusercontent.com/Mrignored/bh/main/install.sh -o /tmp/backhaul-autorestart.sh
+    chmod +x /tmp/backhaul-autorestart.sh
+    bash /tmp/backhaul-autorestart.sh
+    press_key
+}
+
 # Function to read user input
 read_option() {
-    read -p "Enter your choice [0-7]: " choice
+    read -p "Enter your choice [0-8]: " choice
     case $choice in
         1) configure_tunnel ;;
         2) tunnel_management ;;
@@ -1870,6 +1881,7 @@ read_option() {
         5) download_and_extract_backhaul "menu";;
         6) update_script ;;
         7) remove_core ;;
+        8) run_autorestart_manager ;;  # گزینه ۸
         0) exit 0 ;;
         *) echo -e "${RED} Invalid option!${NC}" && sleep 1 ;;
     esac
