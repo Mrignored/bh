@@ -1,16 +1,10 @@
-Backhaul
-
-## How to Run
-
 v1.0.2
-bash <(curl -Ls --ipv4 https://raw.githubusercontent.com/Mrignored/bh/refs/heads/main/backhaul.sh)
-```
 
+Run the following script on your server (ubuntu supported):
+
+bash <(curl -Ls --ipv4 https://raw.githubusercontent.com/ArminNy/Backhaul_Premium/refs/heads/main/backhaul.sh)
 v1.1.9
 
 Run the following script on your server (ubuntu supported):
-```
-bash <(curl -Ls --ipv4 https://raw.githubusercontent.com/Mrignored/bh/refs/heads/main/backhaul2.sh)
-```
 
-
+bash <(curl -Ls --ipv4 https://raw.githubusercontent.com/ArminNy/Backhaul_Premium/refs/heads/main/backhaul2.sh)
