@@ -1,4 +1,3 @@
-```bash
 #!/bin/bash
 
 # Script version
@@ -45,14 +44,12 @@ check_services() {
         echo -e "\n${RED}✖ No backhaul services found!${NC}\n"
         return 1
     fi
-
     echo -e "   ${GREEN}✔ Found services:${NC}"
-
+    # Process each service with consistent indentation
     while IFS= read -r service; do
         echo -e "     ${CYAN}$service${NC}"
     done <<< "$services"
-
-    echo -ne "\n"
+    echo -ne "\n"  # Only one newline after services list
     return 0
 }
 
@@ -62,63 +59,44 @@ check_cron_exists() {
     return $?
 }
 
-# Function to get current cron interval in hours
+# Function to get current cron interval
 get_current_cron_interval() {
-    crontab -l 2>/dev/null | \
-        grep "systemctl list-unit-files | grep \"backhaul-\"" | \
-        sed -n 's|^0 \*/\([0-9]*\) \* \* \* .*|\1|p'
+    crontab -l 2>/dev/null | grep "systemctl list-unit-files | grep \"backhaul-\"" | sed -n 's|^\*/\([0-9]*\) \* \* \* \* .*|\1|p'
 }
 
 # Function to add/edit cron job
 add_cron() {
     show_header
     echo -e "       ${YELLOW}════════ Add/Edit Restart Schedule ═════════${NC}"
-
     # Check if cron job already exists
     if check_cron_exists; then
         current_interval=$(get_current_cron_interval)
-
-        if [ -n "$current_interval" ]; then
-            echo -e " ${GREEN}✓ Existing cron job found with interval: ${current_interval} hours${NC}"
-        else
-            echo -e " ${GREEN}✓ Existing cron job found${NC}"
-        fi
-
+        echo -e " ${GREEN}✓ Existing cron job found with interval: ${current_interval} minutes${NC}"
         echo -e " ${YELLOW}This will edit the existing schedule.${NC}\n"
     fi
-
     if ! check_services; then
         return
     fi
-
     while true; do
-        echo -ne " ${GREEN}Enter restart interval in hours (1-24): ${NC}"
+        echo -ne " ${GREEN}Enter restart interval in minutes (1-59): ${NC}"
         read interval
-
-        if [[ "$interval" =~ ^[0-9]+$ ]] && [ "$interval" -ge 1 ] && [ "$interval" -le 24 ]; then
+        if [[ "$interval" =~ ^[0-9]+$ ]] && [ "$interval" -ge 1 ] && [ "$interval" -le 59 ]; then
             break
         else
-            echo -e "${RED}Invalid input. Please enter a number between 1 and 24.${NC}"
+            echo -e "${RED}Invalid input. Please enter a number between 1 and 59.${NC}"
         fi
     done
-
     temp_cron=$(mktemp)
-
     crontab -l > "$temp_cron" 2>/dev/null
-
     # Remove any existing backhaul restart cron
     sed -i '/systemctl list-unit-files | grep "backhaul-"/d' "$temp_cron"
-
-    # Add new hourly cron job
-    echo "0 */$interval * * * /bin/bash -c 'services=\$(systemctl list-unit-files | grep \"backhaul-\" | awk '\''{print \$1}'\''); [ -n \"\$services\" ] && systemctl restart \$services'" >> "$temp_cron"
-
+    echo "*/$interval * * * * /bin/bash -c 'services=\$(systemctl list-unit-files | grep \"backhaul-\" | awk '\''{print \$1}'\''); [ -n \"\$services\" ] && systemctl restart \$services'" >> "$temp_cron"
     crontab "$temp_cron"
     rm "$temp_cron"
-
     if check_cron_exists; then
-        echo -e "\n ${GREEN}✓ Automatic restart schedule updated to every $interval hours.${NC}"
+        echo -e "\n ${GREEN}✓ Automatic restart schedule updated to every $interval minutes.${NC}"
     else
-        echo -e "\n ${GREEN}✓ Automatic restart every $interval hours has been scheduled.${NC}"
+        echo -e "\n ${GREEN}✓ Automatic restart every $interval minutes has been scheduled.${NC}"
     fi
 }
 
@@ -126,24 +104,14 @@ add_cron() {
 remove_cron() {
     show_header
     echo -e "       ${RED}══════ Remove Restart Schedule ════════${NC}"
-
     if check_cron_exists; then
         current_interval=$(get_current_cron_interval)
-
         temp_cron=$(mktemp)
-
         crontab -l > "$temp_cron" 2>/dev/null
-
         sed -i '/systemctl list-unit-files | grep "backhaul-"/d' "$temp_cron"
-
         crontab "$temp_cron"
         rm "$temp_cron"
-
-        if [ -n "$current_interval" ]; then
-            echo -e "\n ${GREEN}✓ Automatic restart schedule (every $current_interval hours) has been removed.${NC}"
-        else
-            echo -e "\n ${GREEN}✓ Automatic restart schedule has been removed.${NC}"
-        fi
+        echo -e "\n ${GREEN}✓ Automatic restart schedule (every $current_interval minutes) has been removed.${NC}"
     else
         echo -e "\n ${RED}No automatic restart schedule was found.${NC}"
     fi
@@ -153,12 +121,9 @@ remove_cron() {
 restart_now() {
     show_header
     echo -e "       ${YELLOW}════════ Restart Services Now ═════════${NC}\n"
-
     if check_services; then
         echo -e "   ${YELLOW}Restarting services...${NC}\n"
-
         systemctl restart $services
-
         echo -e " ${GREEN}✓ Services have been restarted.${NC}"
     fi
 }
@@ -167,32 +132,22 @@ restart_now() {
 while true; do
     show_menu
     read choice
-
     case $choice in
-        1)
-            add_cron
-            ;;
-        2)
-            remove_cron
-            ;;
-        3)
-            restart_now
-            ;;
-        4)
+        1) add_cron ;;
+        2) remove_cron ;;
+        3) restart_now ;;
+        4) 
             echo -e "${GREEN}Exiting...${NC}"
             sleep 1
             clear
-            exit 0
+            exit 0 
             ;;
-        *)
+        *) 
             echo -e "\n ${RED}Invalid option. Please try again.${NC}"
             ;;
     esac
-
     echo -e "\n ${BLUE}Press any key to return to menu...${NC}"
     read -n 1 -s
 done
-
 # https://github.com/Rayanoum/backhaul-cron
 # t.me/Rayanoum
-```
