@@ -55,13 +55,34 @@ check_services() {
 
 # Function to check if cron job exists
 check_cron_exists() {
-    crontab -l 2>/dev/null | grep -q "systemctl list-unit-files | grep \"backhaul-\""
+    crontab -l 2>/dev/null | grep -q -E "BACKHAUL_CRON_AUTORESTART|systemctl list-unit-files | grep \"backhaul-\""
     return $?
 }
 
 # Function to get current cron interval
 get_current_cron_interval() {
-    crontab -l 2>/dev/null | grep "systemctl list-unit-files | grep \"backhaul-\"" | sed -n 's|^\*/\([0-9]*\) \* \* \* \* .*|\1|p'
+    local cron_line
+    cron_line=$(crontab -l 2>/dev/null | grep "BACKHAUL_CRON_AUTORESTART" | head -n1)
+    if [[ "$cron_line" =~ BACKHAUL_INTERVAL=([0-9]+) ]]; then
+        echo "${BASH_REMATCH[1]}"
+    else
+        # Support older schedules that used */N in the minute field.
+        crontab -l 2>/dev/null | grep "systemctl list-unit-files | grep \"backhaul-\"" | sed -n 's|^\*/\([0-9]*\) \* \* \* \* .*|\1|p'
+    fi
+}
+
+# Convert 1m / 30m / 1h / 24h (or plain minutes) to minutes.
+parse_interval() {
+    local value="${1,,}"
+    if [[ "$value" =~ ^[0-9]+$ ]]; then
+        echo "$value"
+    elif [[ "$value" =~ ^([0-9]+)m$ ]]; then
+        echo "${BASH_REMATCH[1]}"
+    elif [[ "$value" =~ ^([0-9]+)h$ ]]; then
+        echo $((BASH_REMATCH[1] * 60))
+    else
+        return 1
+    fi
 }
 
 # Function to add/edit cron job
@@ -71,32 +92,42 @@ add_cron() {
     # Check if cron job already exists
     if check_cron_exists; then
         current_interval=$(get_current_cron_interval)
-        echo -e " ${GREEN}✓ Existing cron job found with interval: ${current_interval} minutes${NC}"
+        if [ -n "$current_interval" ]; then
+            echo -e " ${GREEN}✓ Existing cron job found with interval: ${current_interval} minutes${NC}"
+        else
+            echo -e " ${GREEN}✓ Existing cron job found${NC}"
+        fi
         echo -e " ${YELLOW}This will edit the existing schedule.${NC}\n"
     fi
     if ! check_services; then
         return
     fi
     while true; do
-        echo -ne " ${GREEN}Enter restart interval in minutes (1-59): ${NC}"
-        read interval
-        if [[ "$interval" =~ ^[0-9]+$ ]] && [ "$interval" -ge 1 ] && [ "$interval" -le 59 ]; then
+        echo -ne " ${GREEN}Enter restart interval (1m-24h, e.g. 5m, 1h, 24h): ${NC}"
+        read interval_input
+        interval=$(parse_interval "$interval_input")
+        if [[ "$interval" =~ ^[0-9]+$ ]] && [ "$interval" -ge 1 ] && [ "$interval" -le 1440 ]; then
             break
         else
-            echo -e "${RED}Invalid input. Please enter a number between 1 and 59.${NC}"
+            echo -e "${RED}Invalid input. Use 1-1440 minutes, or 1m-24h (e.g. 30m, 6h).${NC}"
         fi
     done
     temp_cron=$(mktemp)
     crontab -l > "$temp_cron" 2>/dev/null
-    # Remove any existing backhaul restart cron
+    # Remove any existing backhaul restart cron (new or legacy format).
+    sed -i '/BACKHAUL_CRON_AUTORESTART/d' "$temp_cron"
     sed -i '/systemctl list-unit-files | grep "backhaul-"/d' "$temp_cron"
-    echo "*/$interval * * * * /bin/bash -c 'services=\$(systemctl list-unit-files | grep \"backhaul-\" | awk '\''{print \$1}'\''); [ -n \"\$services\" ] && systemctl restart \$services'" >> "$temp_cron"
+
+    # Cron runs every minute; the epoch check allows any interval from 1 minute
+    # through 24 hours, including values that cannot be represented by a single
+    # native cron */N expression (e.g. 61 minutes).
+    echo "* * * * * /bin/bash -c ': BACKHAUL_CRON_AUTORESTART; BACKHAUL_INTERVAL=$interval; (( (\$(date +\\%s) / 60) \\% BACKHAUL_INTERVAL == 0 )) && services=\$(systemctl list-unit-files | grep \"backhaul-\" | awk '\''{print \$1}'\''); [ -n \"\$services\" ] && systemctl restart \$services'" >> "$temp_cron"
     crontab "$temp_cron"
     rm "$temp_cron"
     if check_cron_exists; then
-        echo -e "\n ${GREEN}✓ Automatic restart schedule updated to every $interval minutes.${NC}"
-    else
         echo -e "\n ${GREEN}✓ Automatic restart every $interval minutes has been scheduled.${NC}"
+    else
+        echo -e "\n ${RED}✗ Failed to schedule automatic restart.${NC}"
     fi
 }
 
@@ -108,10 +139,15 @@ remove_cron() {
         current_interval=$(get_current_cron_interval)
         temp_cron=$(mktemp)
         crontab -l > "$temp_cron" 2>/dev/null
+        sed -i '/BACKHAUL_CRON_AUTORESTART/d' "$temp_cron"
         sed -i '/systemctl list-unit-files | grep "backhaul-"/d' "$temp_cron"
         crontab "$temp_cron"
         rm "$temp_cron"
-        echo -e "\n ${GREEN}✓ Automatic restart schedule (every $current_interval minutes) has been removed.${NC}"
+        if [ -n "$current_interval" ]; then
+            echo -e "\n ${GREEN}✓ Automatic restart schedule (every $current_interval minutes) has been removed.${NC}"
+        else
+            echo -e "\n ${GREEN}✓ Automatic restart schedule has been removed.${NC}"
+        fi
     else
         echo -e "\n ${RED}No automatic restart schedule was found.${NC}"
     fi
